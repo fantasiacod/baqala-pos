@@ -1,0 +1,63 @@
+name: بناء ونشر نسخة ويندوز
+
+on:
+  push:
+    paths:
+      - 'baqala-src.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: فك حزمة الكود
+        shell: pwsh
+        run: Expand-Archive -Path baqala-src.zip -DestinationPath app -Force
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: تثبيت الحزم
+        working-directory: app
+        run: npm install
+
+      - name: تجهيز الخطوط والأيقونة
+        working-directory: app
+        run: node scripts/prepare-assets.js
+
+      - name: البناء
+        working-directory: app
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: النشر في الإصدارات
+        working-directory: app
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$v"
+          $repo = "${{ github.repository }}"
+          $files = @()
+          $files += (Get-ChildItem dist\*.exe).FullName
+          $files += (Get-ChildItem dist\*.blockmap -ErrorAction SilentlyContinue).FullName
+          $files += (Get-ChildItem dist\latest.yml).FullName
+          Write-Host "الملفات: $($files -join ' | ')"
+          gh release view $tag --repo $repo 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --repo $repo --title $v --notes "إصدار $v" }
+          gh release upload $tag $files --repo $repo --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BaqalaPOS-Setup
+          path: |
+            app/dist/*.exe
+            app/dist/latest.yml
+          retention-days: 30
