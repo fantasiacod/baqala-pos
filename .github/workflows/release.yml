@@ -1,0 +1,47 @@
+name: بناء ونشر نسخة ويندوز
+
+on:
+  push:
+    paths:
+      - 'baqala-src.zip'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: فك حزمة الكود
+        shell: pwsh
+        run: Expand-Archive -Path baqala-src.zip -DestinationPath app -Force
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: تثبيت الحزم
+        working-directory: app
+        run: npm install
+
+      - name: تجهيز الخطوط والأيقونة
+        working-directory: app
+        run: node scripts/prepare-assets.js
+
+      - name: البناء والنشر
+        working-directory: app
+        run: npx electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BaqalaPOS-Setup
+          path: |
+            app/dist/*.exe
+            app/dist/latest.yml
+          retention-days: 30
